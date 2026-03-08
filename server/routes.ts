@@ -200,53 +200,56 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Client not initialized" });
       }
 
-      // Get password info from server
-      const pwData = await client.invoke(new Api.account.GetPassword());
-      console.log("Password data from server:", { hasCurrentAlgo: !!pwData.currentAlgo });
-      
-      let passwordInput: any;
+      try {
+        // Get password requirements from server
+        const pwData = await client.invoke(new Api.account.GetPassword());
+        
+        // Hash the password using SHA256
+        const crypto = await import('crypto');
+        const passwordBytes = Buffer.concat([
+          Buffer.from(pwData.currentSalt as Buffer || ''),
+          Buffer.from(password, 'utf-8'),
+          Buffer.from(pwData.currentSalt as Buffer || '')
+        ]);
+        
+        const sha256Hash = crypto
+          .createHash('sha256')
+          .update(passwordBytes)
+          .digest();
+        
+        const sha256Hash2 = crypto
+          .createHash('sha256')
+          .update(Buffer.concat([
+            Buffer.from(pwData.currentSalt as Buffer || ''),
+            sha256Hash,
+            Buffer.from(pwData.currentSalt as Buffer || '')
+          ]))
+          .digest();
 
-      // Check if account has 2FA with SRP
-      if (pwData.currentAlgo && pwData.currentAlgo.className !== 'PasswordKdfAlgoUnknown') {
-        try {
-          // Use SRP for 2FA password
-          const newAlgo = await client.computeNewPasswordHash(pwData.currentAlgo, Buffer.from(password, 'utf-8'));
-          passwordInput = new Api.auth.PasswordInputSRP({
-            srpId: pwData.srpId,
-            a: newAlgo.a,
-            m1: newAlgo.m1,
-          });
-        } catch (srpErr: any) {
-          console.warn("SRP failed:", srpErr.message);
-          // Fallback to simpler method
-          passwordInput = new Api.auth.PasswordInputNoSRP({
-            srpsessionid: pwData.srpId,
-            password: Buffer.from(password, 'utf-8'),
-          });
-        }
-      } else {
-        // No SRP, use simple password
-        passwordInput = new Api.auth.PasswordInputNoSRP({
-          srpsessionid: pwData.srpId || 0,
-          password: Buffer.from(password, 'utf-8'),
+        // Invoke CheckPassword with computed hash
+        const response = await client.invoke(
+          new Api.auth.CheckPassword({
+            password: sha256Hash2,
+          })
+        );
+        
+        console.log("✅ Password verified successfully");
+
+        const sessionString = (client.session as StringSession).save();
+        await storage.setTgSetting("session", sessionString);
+        
+        res.json({ message: "Logged in successfully" });
+      } catch (err: any) {
+        console.error("❌ Password verification failed:", err?.errorMessage || err?.message);
+        res.status(400).json({ 
+          message: err?.errorMessage || err?.message || "كلمة المرور غير صحيحة"
         });
       }
-
-      // Send the password input
-      await client.invoke(
-        new Api.auth.CheckPassword({
-          password: passwordInput,
-        })
-      );
-
-      const sessionString = (client.session as StringSession).save();
-      await storage.setTgSetting("session", sessionString);
-      
-      res.json({ message: "Logged in successfully" });
     } catch (err: any) {
-      console.error("Password verification error:", err);
-      const errorMsg = err.errorMessage || err.message || "Invalid password or 2FA code";
-      res.status(400).json({ message: errorMsg });
+      console.error("Password route error:", err);
+      res.status(400).json({ 
+        message: "حدث خطأ في التحقق من كلمة المرور"
+      });
     }
   });
 
