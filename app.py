@@ -35,8 +35,8 @@ UPLOADS_DIR = "static/uploads"
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
-API_ID = os.environ.get('TELEGRAM_API_ID')
-API_HASH = os.environ.get('TELEGRAM_API_HASH')
+API_ID = 22043994
+API_HASH = '56f64582b363d367280db96586b97801'
 
 PREDEFINED_USERS = {
     "user_1": {"id": "user_1", "name": "المستخدم الأول", "icon": "fas fa-user", "color": "#5865f2"},
