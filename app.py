@@ -319,6 +319,13 @@ def get_current_user_id():
     return uid
 
 
+@app.after_request
+def add_no_cache(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
 @app.route("/")
 def index():
     uid = get_current_user_id()
@@ -329,6 +336,27 @@ def index():
                            settings=settings,
                            predefined_users=PREDEFINED_USERS,
                            current_user_id=uid)
+
+@app.route("/sw.js")
+def service_worker():
+    sw_content = """
+// Service Worker - Clear all caches
+self.addEventListener('install', event => {
+    self.skipWaiting();
+});
+self.addEventListener('activate', event => {
+    event.waitUntil(
+        caches.keys().then(keys => Promise.all(keys.map(key => caches.delete(key))))
+    );
+    self.clients.claim();
+});
+"""
+    from flask import Response
+    return Response(sw_content, mimetype='application/javascript')
+
+@app.route("/vite-hmr")
+def vite_hmr():
+    return "", 204
 
 
 @app.route("/static/uploads/<path:filename>")
